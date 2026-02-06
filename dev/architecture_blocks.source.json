@@ -1,0 +1,266 @@
+{
+  "title": "Default Nanochat Architecture Explorer",
+  "subtitle": "Single source of truth for architecture comments used by both Markdown docs and UI.",
+  "default_path": [
+    "python -m scripts.tok_train",
+    "python -m scripts.base_train"
+  ],
+  "outputs": {
+    "markdown": "dev/DEFAULT_MODEL_BUILDING_BLOCKS.md",
+    "ui_json": "dev/architecture_blocks.ui.json"
+  },
+  "blocks": [
+    {
+      "id": "default-model-instantiation",
+      "title": "Default Model Instantiation",
+      "commentary": [
+        "The default base model checkpoint is created through `scripts/base_train.py`.",
+        "Default model args are `depth=20`, `aspect-ratio=64`, `head-dim=128`, `max-seq-len=2048`, `window-pattern=SSSL`.",
+        "With these defaults, the model shape is `n_layer=20`, `n_embd=1280`, `n_head=10`, `n_kv_head=10`, `sequence_len=2048`."
+      ],
+      "references": [
+        { "path": "scripts/base_train.py", "start": 40, "end": 53 },
+        { "path": "scripts/base_train.py", "start": 125, "end": 136 },
+        { "path": "scripts/base_train.py", "start": 142, "end": 147 }
+      ],
+      "snippets": [
+        { "label": "Default CLI Architecture Args", "path": "scripts/base_train.py", "start": 49, "end": 53 },
+        { "label": "Model Config Construction", "path": "scripts/base_train.py", "start": 125, "end": 136 },
+        { "label": "Model Init Path", "path": "scripts/base_train.py", "start": 142, "end": 147 }
+      ]
+    },
+    {
+      "id": "tokenizer-default-path",
+      "title": "Tokenizer Used By Default",
+      "commentary": [
+        "The default tokenizer training path uses `RustBPETokenizer` with vocab size `32768`.",
+        "Runtime loading in base training uses `get_tokenizer()` which returns `RustBPETokenizer.from_directory(...)`.",
+        "Special conversation tokens are part of the tokenizer definition and are shared with downstream chat phases."
+      ],
+      "references": [
+        { "path": "scripts/tok_train.py", "start": 16, "end": 20 },
+        { "path": "nanochat/tokenizer.py", "start": 13, "end": 25 },
+        { "path": "nanochat/tokenizer.py", "start": 163, "end": 190 },
+        { "path": "nanochat/tokenizer.py", "start": 390, "end": 395 }
+      ],
+      "snippets": [
+        { "label": "Tokenizer Training Defaults", "path": "scripts/tok_train.py", "start": 16, "end": 20 },
+        { "label": "Special Tokens", "path": "nanochat/tokenizer.py", "start": 13, "end": 25 },
+        { "label": "RustBPETokenizer Training Path", "path": "nanochat/tokenizer.py", "start": 171, "end": 190 },
+        { "label": "Runtime get_tokenizer()", "path": "nanochat/tokenizer.py", "start": 390, "end": 395 }
+      ]
+    },
+    {
+      "id": "embedding-and-positional-signal",
+      "title": "Embedding And Positional Signal",
+      "commentary": [
+        "Token embeddings live in `transformer.wte`, and there is no learned positional embedding table.",
+        "Position information is carried by RoPE buffers (`cos`, `sin`) that are precomputed and sliced in forward.",
+        "The input embedding is RMS-normalized before entering the first transformer block."
+      ],
+      "references": [
+        { "path": "nanochat/gpt.py", "start": 163, "end": 167 },
+        { "path": "nanochat/gpt.py", "start": 243, "end": 258 },
+        { "path": "nanochat/gpt.py", "start": 391, "end": 402 }
+      ],
+      "snippets": [
+        { "label": "Embedding And LM Head Modules", "path": "nanochat/gpt.py", "start": 163, "end": 167 },
+        { "label": "RoPE Precomputation", "path": "nanochat/gpt.py", "start": 243, "end": 258 },
+        { "label": "Embedding Usage In Forward", "path": "nanochat/gpt.py", "start": 391, "end": 402 }
+      ]
+    },
+    {
+      "id": "block-skeleton-and-residual-gates",
+      "title": "Transformer Block Skeleton",
+      "commentary": [
+        "Each block has two residual branches: attention and MLP, each with pre-norm (`norm(x)`).",
+        "Before each block, the running residual stream is mixed with the initial embedding `x0` using learned per-layer scalars (`resid_lambdas`, `x0_lambdas`)."
+      ],
+      "references": [
+        { "path": "nanochat/gpt.py", "start": 134, "end": 143 },
+        { "path": "nanochat/gpt.py", "start": 172, "end": 173 },
+        { "path": "nanochat/gpt.py", "start": 403, "end": 407 }
+      ],
+      "snippets": [
+        { "label": "Block Definition", "path": "nanochat/gpt.py", "start": 134, "end": 143 },
+        { "label": "Per-Layer Scalar Params", "path": "nanochat/gpt.py", "start": 172, "end": 173 },
+        { "label": "Residual Mix In Forward", "path": "nanochat/gpt.py", "start": 403, "end": 407 }
+      ]
+    },
+    {
+      "id": "attention-core",
+      "title": "Attention Core",
+      "commentary": [
+        "Attention uses bias-free `q`, `k`, `v`, `proj` linear layers.",
+        "RoPE is applied to `q` and `k`, then QK norm is applied, and attention is computed with the unified flash attention wrapper.",
+        "Sliding-window attention is set per layer by `window_pattern`, with the final layer always forced to full context."
+      ],
+      "references": [
+        { "path": "nanochat/gpt.py", "start": 59, "end": 75 },
+        { "path": "nanochat/gpt.py", "start": 91, "end": 101 },
+        { "path": "nanochat/gpt.py", "start": 260, "end": 287 }
+      ],
+      "snippets": [
+        { "label": "Attention Module Definition", "path": "nanochat/gpt.py", "start": 59, "end": 75 },
+        { "label": "RoPE + QK Norm + Attention Call", "path": "nanochat/gpt.py", "start": 91, "end": 101 },
+        { "label": "Window Pattern Scheduling", "path": "nanochat/gpt.py", "start": 260, "end": 287 }
+      ]
+    },
+    {
+      "id": "value-embeddings",
+      "title": "Value Embeddings And Gating",
+      "commentary": [
+        "This implementation includes value embeddings (`value_embeds`) on alternating layers and always includes the final layer.",
+        "When present, each value embedding is injected into attention values through a learned sigmoid gate."
+      ],
+      "references": [
+        { "path": "nanochat/gpt.py", "start": 47, "end": 49 },
+        { "path": "nanochat/gpt.py", "start": 175, "end": 177 },
+        { "path": "nanochat/gpt.py", "start": 85, "end": 90 },
+        { "path": "nanochat/gpt.py", "start": 405, "end": 406 }
+      ],
+      "snippets": [
+        { "label": "Layer Selector For VE", "path": "nanochat/gpt.py", "start": 47, "end": 49 },
+        { "label": "Value Embedding ModuleDict", "path": "nanochat/gpt.py", "start": 175, "end": 177 },
+        { "label": "VE Gating Logic", "path": "nanochat/gpt.py", "start": 85, "end": 90 },
+        { "label": "VE Hook In Forward Loop", "path": "nanochat/gpt.py", "start": 405, "end": 406 }
+      ]
+    },
+    {
+      "id": "mlp",
+      "title": "MLP Stack",
+      "commentary": [
+        "The MLP is a two-layer bias-free feedforward module with expansion ratio 4x.",
+        "Activation is ReLU-squared (`relu(x)^2`) instead of GELU."
+      ],
+      "references": [
+        { "path": "nanochat/gpt.py", "start": 121, "end": 131 }
+      ],
+      "snippets": [
+        { "label": "MLP Module", "path": "nanochat/gpt.py", "start": 121, "end": 131 }
+      ]
+    },
+    {
+      "id": "output-head-and-loss",
+      "title": "Output Head And Training Loss",
+      "commentary": [
+        "After all blocks, the stream is RMS-normalized and projected through an untied LM head.",
+        "Logits are cropped back to vocab size (after optional padded vocab allocation) and softcapped with `15 * tanh(x/15)`.",
+        "Training uses next-token cross-entropy over shifted targets from the dataloader."
+      ],
+      "references": [
+        { "path": "nanochat/gpt.py", "start": 407, "end": 419 },
+        { "path": "nanochat/gpt.py", "start": 167, "end": 167 }
+      ],
+      "snippets": [
+        { "label": "Tail Of Forward (Norm, Head, Softcap, Loss)", "path": "nanochat/gpt.py", "start": 407, "end": 419 }
+      ]
+    },
+    {
+      "id": "initialization",
+      "title": "Parameter Initialization",
+      "commentary": [
+        "`model.init_weights()` is the initialization entry used in default training.",
+        "Embedding and unembedding are initialized separately from transformer matrices.",
+        "Attention and MLP output projections are zero-initialized, and residual scalar parameters are explicitly initialized."
+      ],
+      "references": [
+        { "path": "scripts/base_train.py", "start": 146, "end": 147 },
+        { "path": "nanochat/gpt.py", "start": 204, "end": 221 },
+        { "path": "nanochat/gpt.py", "start": 227, "end": 230 }
+      ],
+      "snippets": [
+        { "label": "Init Entry In Training", "path": "scripts/base_train.py", "start": 146, "end": 147 },
+        { "label": "Main Init Weights Block", "path": "nanochat/gpt.py", "start": 204, "end": 221 },
+        { "label": "Gate Init", "path": "nanochat/gpt.py", "start": 227, "end": 230 }
+      ]
+    },
+    {
+      "id": "attention-runtime-backend",
+      "title": "Attention Runtime Backend (FA3 Or SDPA)",
+      "commentary": [
+        "Runtime attention backend selection is centralized in `nanochat/flash_attention.py`.",
+        "If Flash Attention 3 is available on Hopper (`sm90`), it is used. Otherwise, it falls back to PyTorch SDPA.",
+        "This affects runtime kernels, not checkpoint parameter structure."
+      ],
+      "references": [
+        { "path": "nanochat/flash_attention.py", "start": 23, "end": 42 },
+        { "path": "nanochat/flash_attention.py", "start": 99, "end": 120 },
+        { "path": "nanochat/flash_attention.py", "start": 123, "end": 169 }
+      ],
+      "snippets": [
+        { "label": "FA3 Detection", "path": "nanochat/flash_attention.py", "start": 23, "end": 42 },
+        { "label": "Training Attention Wrapper", "path": "nanochat/flash_attention.py", "start": 99, "end": 120 },
+        { "label": "KV Cache Attention Wrapper", "path": "nanochat/flash_attention.py", "start": 123, "end": 169 }
+      ]
+    },
+    {
+      "id": "dataloader-and-target-shift",
+      "title": "Default Dataloader And Target Shift",
+      "commentary": [
+        "Default base training uses the BOS-aligned best-fit dataloader variant.",
+        "Rows are packed as `T+1`, then shifted into `inputs=row[:-1]` and `targets=row[1:]` for next-token prediction."
+      ],
+      "references": [
+        { "path": "scripts/base_train.py", "start": 335, "end": 338 },
+        { "path": "nanochat/dataloader.py", "start": 97, "end": 100 },
+        { "path": "nanochat/dataloader.py", "start": 153, "end": 160 }
+      ],
+      "snippets": [
+        { "label": "Train Loader Selection", "path": "scripts/base_train.py", "start": 335, "end": 338 },
+        { "label": "Row Capacity And BOS Token", "path": "nanochat/dataloader.py", "start": 97, "end": 100 },
+        { "label": "Input/Target Shift", "path": "nanochat/dataloader.py", "start": 153, "end": 160 }
+      ]
+    },
+    {
+      "id": "checkpoint-contents",
+      "title": "What Gets Saved In A Default Checkpoint",
+      "commentary": [
+        "Default checkpoint writing happens inside the training loop with `save_checkpoint(...)`.",
+        "The model state dict, optimizer state, and metadata are saved. Metadata includes `model_config` and `user_config`.",
+        "The `model_config` payload is the architecture source of truth used later when loading checkpoints."
+      ],
+      "references": [
+        { "path": "scripts/base_train.py", "start": 444, "end": 466 }
+      ],
+      "snippets": [
+        { "label": "Checkpoint Save Call", "path": "scripts/base_train.py", "start": 444, "end": 466 }
+      ]
+    },
+    {
+      "id": "default-parameter-count",
+      "title": "Default Parameter Count (Depth 20 Path)",
+      "commentary": [
+        "Using default `depth=20`, `aspect-ratio=64`, `head-dim=128`, and tokenizer vocab `32768`, total parameters are `896,535,720`.",
+        "Breakdown: `wte=41,943,040`, `value_embeds=419,430,400`, `lm_head=41,943,040`, `transformer_matrices=393,219,200`, `scalars=40`.",
+        "Counting groups are implemented in `num_scaling_params()`."
+      ],
+      "references": [
+        { "path": "nanochat/gpt.py", "start": 319, "end": 346 }
+      ],
+      "snippets": [
+        { "label": "Parameter Group Counting", "path": "nanochat/gpt.py", "start": 319, "end": 346 }
+      ]
+    },
+    {
+      "id": "explicitly-not-default",
+      "title": "Explicitly Not In The Default Path",
+      "commentary": [
+        "The HuggingFace tokenizer wrapper exists but is not used by default base training path.",
+        "FP8 conversion exists behind `--fp8` and is disabled by default.",
+        "Non-equal GQA head settings are possible in config space, but default path sets `n_kv_head == n_head`."
+      ],
+      "references": [
+        { "path": "nanochat/tokenizer.py", "start": 39, "end": 59 },
+        { "path": "scripts/base_train.py", "start": 46, "end": 47 },
+        { "path": "scripts/base_train.py", "start": 164, "end": 184 },
+        { "path": "scripts/base_train.py", "start": 134, "end": 134 }
+      ],
+      "snippets": [
+        { "label": "HF Tokenizer Wrapper", "path": "nanochat/tokenizer.py", "start": 39, "end": 59 },
+        { "label": "FP8 Flag And Conversion Path", "path": "scripts/base_train.py", "start": 46, "end": 47 },
+        { "label": "FP8 Conversion Block", "path": "scripts/base_train.py", "start": 164, "end": 184 }
+      ]
+    }
+  ]
+}

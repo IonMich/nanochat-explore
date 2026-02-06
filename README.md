@@ -1,4 +1,22 @@
-# nanochat
+# nanochat-explore
+
+This fork is intended to explore the nanochat codebase through a UI: side-by-side code snippets (left) and architecture commentary (right).
+
+Quick start:
+
+```bash
+python3 scripts/generate_architecture_docs.py
+python3 -m http.server 8000
+# open http://localhost:8000/dev/architecture_explorer.html
+```
+
+Single source of truth for comments:
+
+- `dev/architecture_blocks.source.json`
+- Generated Markdown: `dev/DEFAULT_MODEL_BUILDING_BLOCKS.md`
+- Generated UI data: `dev/architecture_blocks.ui.json`
+
+Upstream project context:
 
 ![nanochat logo](dev/nanochat.png)
 ![scaling laws](dev/scaling_laws_jan26.png)

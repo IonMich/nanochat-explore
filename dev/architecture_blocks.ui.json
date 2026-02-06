@@ -1,0 +1,667 @@
+{
+  "title": "Default Nanochat Architecture Explorer",
+  "subtitle": "Single source of truth for architecture comments used by both Markdown docs and UI.",
+  "generated_at_utc": "2026-02-06 19:16:25Z",
+  "default_path": [
+    "python -m scripts.tok_train",
+    "python -m scripts.base_train"
+  ],
+  "blocks": [
+    {
+      "id": "default-model-instantiation",
+      "title": "Default Model Instantiation",
+      "commentary": [
+        "The default base model checkpoint is created through `scripts/base_train.py`.",
+        "Default model args are `depth=20`, `aspect-ratio=64`, `head-dim=128`, `max-seq-len=2048`, `window-pattern=SSSL`.",
+        "With these defaults, the model shape is `n_layer=20`, `n_embd=1280`, `n_head=10`, `n_kv_head=10`, `sequence_len=2048`."
+      ],
+      "references": [
+        {
+          "path": "scripts/base_train.py",
+          "start": 40,
+          "end": 53
+        },
+        {
+          "path": "scripts/base_train.py",
+          "start": 125,
+          "end": 136
+        },
+        {
+          "path": "scripts/base_train.py",
+          "start": 142,
+          "end": 147
+        }
+      ],
+      "snippets": [
+        {
+          "path": "scripts/base_train.py",
+          "start": 49,
+          "end": 53,
+          "line_count": 5,
+          "code": "  49 | parser.add_argument(\"--depth\", type=int, default=20, help=\"depth of the Transformer model\")\n  50 | parser.add_argument(\"--aspect-ratio\", type=int, default=64, help=\"model_dim = depth * aspect_ratio\")\n  51 | parser.add_argument(\"--head-dim\", type=int, default=128, help=\"target head dimension for attention\")\n  52 | parser.add_argument(\"--max-seq-len\", type=int, default=2048, help=\"max context length\")\n  53 | parser.add_argument(\"--window-pattern\", type=str, default=\"SSSL\", help=\"sliding window pattern tiled across layers: L=full, S=half context (e.g. 'SSL')\")",
+          "label": "Default CLI Architecture Args"
+        },
+        {
+          "path": "scripts/base_train.py",
+          "start": 125,
+          "end": 136,
+          "line_count": 12,
+          "code": " 125 | def build_model_meta(depth):\n 126 |     \"\"\"Build a model on meta device for a given depth (shapes/dtypes only, no data).\"\"\"\n 127 |     # Model dim is nudged up to nearest multiple of head_dim for clean division\n 128 |     # (FA3 requires head_dim divisible by 8, and this guarantees head_dim == args.head_dim exactly)\n 129 |     base_dim = depth * args.aspect_ratio\n 130 |     model_dim = ((base_dim + args.head_dim - 1) // args.head_dim) * args.head_dim\n 131 |     num_heads = model_dim // args.head_dim\n 132 |     config = GPTConfig(\n 133 |         sequence_len=args.max_seq_len, vocab_size=vocab_size,\n 134 |         n_layer=depth, n_head=num_heads, n_kv_head=num_heads, n_embd=model_dim,\n 135 |         window_pattern=args.window_pattern,\n 136 |     )",
+          "label": "Model Config Construction"
+        },
+        {
+          "path": "scripts/base_train.py",
+          "start": 142,
+          "end": 147,
+          "line_count": 6,
+          "code": " 142 | model = build_model_meta(args.depth) # 1) Build on meta device (only shapes/dtypes, no data)\n 143 | model_config = model.config\n 144 | model_config_kwargs = asdict(model_config)\n 145 | print0(f\"Model config:\\n{json.dumps(model_config_kwargs, indent=2)}\")\n 146 | model.to_empty(device=device) # 2) All tensors get storage on target device but with uninitialized (garbage) data\n 147 | model.init_weights() # 3) All tensors get initialized",
+          "label": "Model Init Path"
+        }
+      ]
+    },
+    {
+      "id": "tokenizer-default-path",
+      "title": "Tokenizer Used By Default",
+      "commentary": [
+        "The default tokenizer training path uses `RustBPETokenizer` with vocab size `32768`.",
+        "Runtime loading in base training uses `get_tokenizer()` which returns `RustBPETokenizer.from_directory(...)`.",
+        "Special conversation tokens are part of the tokenizer definition and are shared with downstream chat phases."
+      ],
+      "references": [
+        {
+          "path": "scripts/tok_train.py",
+          "start": 16,
+          "end": 20
+        },
+        {
+          "path": "nanochat/tokenizer.py",
+          "start": 13,
+          "end": 25
+        },
+        {
+          "path": "nanochat/tokenizer.py",
+          "start": 163,
+          "end": 190
+        },
+        {
+          "path": "nanochat/tokenizer.py",
+          "start": 390,
+          "end": 395
+        }
+      ],
+      "snippets": [
+        {
+          "path": "scripts/tok_train.py",
+          "start": 16,
+          "end": 20,
+          "line_count": 5,
+          "code": "  16 | parser = argparse.ArgumentParser(description='Train a BPE tokenizer')\n  17 | parser.add_argument('--max-chars', type=int, default=2_000_000_000, help='Maximum characters to train on (default: 10B)')\n  18 | parser.add_argument('--doc-cap', type=int, default=10_000, help='Maximum characters per document (default: 10,000)')\n  19 | parser.add_argument('--vocab-size', type=int, default=32768, help='Vocabulary size (default: 32768 = 2^15)')\n  20 | args = parser.parse_args()",
+          "label": "Tokenizer Training Defaults"
+        },
+        {
+          "path": "nanochat/tokenizer.py",
+          "start": 13,
+          "end": 25,
+          "line_count": 13,
+          "code": "  13 | SPECIAL_TOKENS = [\n  14 |     # every document begins with the Beginning of Sequence (BOS) token that delimits documents\n  15 |     \"<|bos|>\",\n  16 |     # tokens below are only used during finetuning to render Conversations into token ids\n  17 |     \"<|user_start|>\", # user messages\n  18 |     \"<|user_end|>\",\n  19 |     \"<|assistant_start|>\", # assistant messages\n  20 |     \"<|assistant_end|>\",\n  21 |     \"<|python_start|>\", # assistant invokes python REPL tool\n  22 |     \"<|python_end|>\",\n  23 |     \"<|output_start|>\", # python REPL outputs back to assistant\n  24 |     \"<|output_end|>\",\n  25 | ]",
+          "label": "Special Tokens"
+        },
+        {
+          "path": "nanochat/tokenizer.py",
+          "start": 171,
+          "end": 190,
+          "line_count": 20,
+          "code": " 171 |     def train_from_iterator(cls, text_iterator, vocab_size):\n 172 |         # 1) train using rustbpe\n 173 |         tokenizer = rustbpe.Tokenizer()\n 174 |         # the special tokens are inserted later in __init__, we don't train them here\n 175 |         vocab_size_no_special = vocab_size - len(SPECIAL_TOKENS)\n 176 |         assert vocab_size_no_special >= 256, f\"vocab_size_no_special must be at least 256, got {vocab_size_no_special}\"\n 177 |         tokenizer.train_from_iterator(text_iterator, vocab_size_no_special, pattern=SPLIT_PATTERN)\n 178 |         # 2) construct the associated tiktoken encoding for inference\n 179 |         pattern = tokenizer.get_pattern()\n 180 |         mergeable_ranks_list = tokenizer.get_mergeable_ranks()\n 181 |         mergeable_ranks = {bytes(k): v for k, v in mergeable_ranks_list}\n 182 |         tokens_offset = len(mergeable_ranks)\n 183 |         special_tokens = {name: tokens_offset + i for i, name in enumerate(SPECIAL_TOKENS)}\n 184 |         enc = tiktoken.Encoding(\n 185 |             name=\"rustbpe\",\n 186 |             pat_str=pattern,\n 187 |             mergeable_ranks=mergeable_ranks, # dict[bytes, int] (token bytes -> merge priority rank)\n 188 |             special_tokens=special_tokens, # dict[str, int] (special token name -> token id)\n 189 |         )\n 190 |         return cls(enc, \"<|bos|>\")",
+          "label": "RustBPETokenizer Training Path"
+        },
+        {
+          "path": "nanochat/tokenizer.py",
+          "start": 390,
+          "end": 395,
+          "line_count": 6,
+          "code": " 390 | def get_tokenizer():\n 391 |     from nanochat.common import get_base_dir\n 392 |     base_dir = get_base_dir()\n 393 |     tokenizer_dir = os.path.join(base_dir, \"tokenizer\")\n 394 |     # return HuggingFaceTokenizer.from_directory(tokenizer_dir)\n 395 |     return RustBPETokenizer.from_directory(tokenizer_dir)",
+          "label": "Runtime get_tokenizer()"
+        }
+      ]
+    },
+    {
+      "id": "embedding-and-positional-signal",
+      "title": "Embedding And Positional Signal",
+      "commentary": [
+        "Token embeddings live in `transformer.wte`, and there is no learned positional embedding table.",
+        "Position information is carried by RoPE buffers (`cos`, `sin`) that are precomputed and sliced in forward.",
+        "The input embedding is RMS-normalized before entering the first transformer block."
+      ],
+      "references": [
+        {
+          "path": "nanochat/gpt.py",
+          "start": 163,
+          "end": 167
+        },
+        {
+          "path": "nanochat/gpt.py",
+          "start": 243,
+          "end": 258
+        },
+        {
+          "path": "nanochat/gpt.py",
+          "start": 391,
+          "end": 402
+        }
+      ],
+      "snippets": [
+        {
+          "path": "nanochat/gpt.py",
+          "start": 163,
+          "end": 167,
+          "line_count": 5,
+          "code": " 163 |         self.transformer = nn.ModuleDict({\n 164 |             \"wte\": nn.Embedding(padded_vocab_size, config.n_embd),\n 165 |             \"h\": nn.ModuleList([Block(config, layer_idx) for layer_idx in range(config.n_layer)]),\n 166 |         })\n 167 |         self.lm_head = nn.Linear(config.n_embd, padded_vocab_size, bias=False)",
+          "label": "Embedding And LM Head Modules"
+        },
+        {
+          "path": "nanochat/gpt.py",
+          "start": 243,
+          "end": 258,
+          "line_count": 16,
+          "code": " 243 |     def _precompute_rotary_embeddings(self, seq_len, head_dim, base=10000, device=None):\n 244 |         # TODO: bump base theta more? e.g. 100K is more common more recently\n 245 |         # autodetect the device from model embeddings\n 246 |         if device is None:\n 247 |             device = self.transformer.wte.weight.device\n 248 |         # stride the channels\n 249 |         channel_range = torch.arange(0, head_dim, 2, dtype=torch.float32, device=device)\n 250 |         inv_freq = 1.0 / (base ** (channel_range / head_dim))\n 251 |         # stride the time steps\n 252 |         t = torch.arange(seq_len, dtype=torch.float32, device=device)\n 253 |         # calculate the rotation frequencies at each (time, channel) pair\n 254 |         freqs = torch.outer(t, inv_freq)\n 255 |         cos, sin = freqs.cos(), freqs.sin()\n 256 |         cos, sin = cos.bfloat16(), sin.bfloat16() # keep them in bfloat16\n 257 |         cos, sin = cos[None, :, None, :], sin[None, :, None, :] # add batch and head dims for later broadcasting\n 258 |         return cos, sin",
+          "label": "RoPE Precomputation"
+        },
+        {
+          "path": "nanochat/gpt.py",
+          "start": 391,
+          "end": 402,
+          "line_count": 12,
+          "code": " 391 |         # Grab the rotary embeddings for the current sequence length (they are of shape (1, seq_len, 1, head_dim/2))\n 392 |         assert T <= self.cos.size(1), f\"Sequence length grew beyond the rotary embeddings cache: {T} > {self.cos.size(1)}\"\n 393 |         assert idx.device == self.cos.device, f\"Rotary embeddings and idx are on different devices: {idx.device} != {self.cos.device}\"\n 394 |         assert self.cos.dtype == torch.bfloat16, \"Rotary embeddings must be in bfloat16\"\n 395 |         # if kv cache exists, we need to offset the rotary embeddings to the current position in the cache\n 396 |         T0 = 0 if kv_cache is None else kv_cache.get_pos()\n 397 |         cos_sin = self.cos[:, T0:T0+T], self.sin[:, T0:T0+T] # truncate cache to current sequence length\n 398 | \n 399 |         # Forward the trunk of the Transformer\n 400 |         x = self.transformer.wte(idx) # embed current token\n 401 |         x = norm(x)\n 402 |         x0 = x  # save initial normalized embedding for x0 residual",
+          "label": "Embedding Usage In Forward"
+        }
+      ]
+    },
+    {
+      "id": "block-skeleton-and-residual-gates",
+      "title": "Transformer Block Skeleton",
+      "commentary": [
+        "Each block has two residual branches: attention and MLP, each with pre-norm (`norm(x)`).",
+        "Before each block, the running residual stream is mixed with the initial embedding `x0` using learned per-layer scalars (`resid_lambdas`, `x0_lambdas`)."
+      ],
+      "references": [
+        {
+          "path": "nanochat/gpt.py",
+          "start": 134,
+          "end": 143
+        },
+        {
+          "path": "nanochat/gpt.py",
+          "start": 172,
+          "end": 173
+        },
+        {
+          "path": "nanochat/gpt.py",
+          "start": 403,
+          "end": 407
+        }
+      ],
+      "snippets": [
+        {
+          "path": "nanochat/gpt.py",
+          "start": 134,
+          "end": 143,
+          "line_count": 10,
+          "code": " 134 | class Block(nn.Module):\n 135 |     def __init__(self, config, layer_idx):\n 136 |         super().__init__()\n 137 |         self.attn = CausalSelfAttention(config, layer_idx)\n 138 |         self.mlp = MLP(config)\n 139 | \n 140 |     def forward(self, x, ve, cos_sin, window_size, kv_cache):\n 141 |         x = x + self.attn(norm(x), ve, cos_sin, window_size, kv_cache)\n 142 |         x = x + self.mlp(norm(x))\n 143 |         return x",
+          "label": "Block Definition"
+        },
+        {
+          "path": "nanochat/gpt.py",
+          "start": 172,
+          "end": 173,
+          "line_count": 2,
+          "code": " 172 |         self.resid_lambdas = nn.Parameter(torch.ones(config.n_layer))   # fake init, real init in init_weights()\n 173 |         self.x0_lambdas = nn.Parameter(torch.zeros(config.n_layer))     # fake init, real init in init_weights()",
+          "label": "Per-Layer Scalar Params"
+        },
+        {
+          "path": "nanochat/gpt.py",
+          "start": 403,
+          "end": 407,
+          "line_count": 5,
+          "code": " 403 |         for i, block in enumerate(self.transformer.h):\n 404 |             x = self.resid_lambdas[i] * x + self.x0_lambdas[i] * x0\n 405 |             ve = self.value_embeds[str(i)](idx) if str(i) in self.value_embeds else None\n 406 |             x = block(x, ve, cos_sin, self.window_sizes[i], kv_cache)\n 407 |         x = norm(x)",
+          "label": "Residual Mix In Forward"
+        }
+      ]
+    },
+    {
+      "id": "attention-core",
+      "title": "Attention Core",
+      "commentary": [
+        "Attention uses bias-free `q`, `k`, `v`, `proj` linear layers.",
+        "RoPE is applied to `q` and `k`, then QK norm is applied, and attention is computed with the unified flash attention wrapper.",
+        "Sliding-window attention is set per layer by `window_pattern`, with the final layer always forced to full context."
+      ],
+      "references": [
+        {
+          "path": "nanochat/gpt.py",
+          "start": 59,
+          "end": 75
+        },
+        {
+          "path": "nanochat/gpt.py",
+          "start": 91,
+          "end": 101
+        },
+        {
+          "path": "nanochat/gpt.py",
+          "start": 260,
+          "end": 287
+        }
+      ],
+      "snippets": [
+        {
+          "path": "nanochat/gpt.py",
+          "start": 59,
+          "end": 75,
+          "line_count": 17,
+          "code": "  59 | class CausalSelfAttention(nn.Module):\n  60 |     def __init__(self, config, layer_idx):\n  61 |         super().__init__()\n  62 |         self.layer_idx = layer_idx\n  63 |         self.n_head = config.n_head\n  64 |         self.n_kv_head = config.n_kv_head\n  65 |         self.n_embd = config.n_embd\n  66 |         self.head_dim = self.n_embd // self.n_head\n  67 |         assert self.n_embd % self.n_head == 0\n  68 |         assert self.n_kv_head <= self.n_head and self.n_head % self.n_kv_head == 0\n  69 |         self.c_q = nn.Linear(self.n_embd, self.n_head * self.head_dim, bias=False)\n  70 |         self.c_k = nn.Linear(self.n_embd, self.n_kv_head * self.head_dim, bias=False)\n  71 |         self.c_v = nn.Linear(self.n_embd, self.n_kv_head * self.head_dim, bias=False)\n  72 |         self.c_proj = nn.Linear(self.n_embd, self.n_embd, bias=False)\n  73 |         self.ve_gate_channels = 32\n  74 |         self.ve_gate = nn.Linear(self.ve_gate_channels, self.n_kv_head, bias=False) if has_ve(layer_idx, config.n_layer) else None\n  75 | ",
+          "label": "Attention Module Definition"
+        },
+        {
+          "path": "nanochat/gpt.py",
+          "start": 91,
+          "end": 101,
+          "line_count": 11,
+          "code": "  91 |         # Apply Rotary Embeddings to queries and keys to get relative positional encoding\n  92 |         cos, sin = cos_sin\n  93 |         q, k = apply_rotary_emb(q, cos, sin), apply_rotary_emb(k, cos, sin)\n  94 |         q, k = norm(q), norm(k) # QK norm\n  95 | \n  96 |         # Flash Attention (FA3 on Hopper+, PyTorch SDPA fallback elsewhere)\n  97 |         # window_size is (left, right) tuple: (N, 0) for causal, (-1, 0) for full context\n  98 |         if kv_cache is None:\n  99 |             # Training: causal attention with optional sliding window\n 100 |             y = flash_attn.flash_attn_func(q, k, v, causal=True, window_size=window_size)\n 101 |         else:",
+          "label": "RoPE + QK Norm + Attention Call"
+        },
+        {
+          "path": "nanochat/gpt.py",
+          "start": 260,
+          "end": 287,
+          "line_count": 28,
+          "code": " 260 |     def _compute_window_sizes(self, config):\n 261 |         \"\"\"\n 262 |         Compute per-layer window sizes for sliding window attention.\n 263 | \n 264 |         Returns list of (left, right) tuples for FA3's window_size parameter:\n 265 |         - left: how many tokens before current position to attend to (-1 = unlimited)\n 266 |         - right: how many tokens after current position to attend to (0 for causal)\n 267 | \n 268 |         Pattern string is tiled across layers. Final layer always gets L (full context).\n 269 |         Characters: L=long (full context), S=short (half context)\n 270 |         \"\"\"\n 271 |         pattern = config.window_pattern.upper()\n 272 |         assert all(c in \"SL\" for c in pattern), f\"Invalid window_pattern: {pattern}. Use only S and L.\"\n 273 |         # Map characters to window sizes\n 274 |         long_window = config.sequence_len\n 275 |         short_window = long_window // 2\n 276 |         char_to_window = {\n 277 |             \"L\": (long_window, 0),\n 278 |             \"S\": (short_window, 0),\n 279 |         }\n 280 |         # Tile pattern across layers\n 281 |         window_sizes = []\n 282 |         for layer_idx in range(config.n_layer):\n 283 |             char = pattern[layer_idx % len(pattern)]\n 284 |             window_sizes.append(char_to_window[char])\n 285 |         # Final layer always gets full context\n 286 |         window_sizes[-1] = (long_window, 0)\n 287 |         return window_sizes",
+          "label": "Window Pattern Scheduling"
+        }
+      ]
+    },
+    {
+      "id": "value-embeddings",
+      "title": "Value Embeddings And Gating",
+      "commentary": [
+        "This implementation includes value embeddings (`value_embeds`) on alternating layers and always includes the final layer.",
+        "When present, each value embedding is injected into attention values through a learned sigmoid gate."
+      ],
+      "references": [
+        {
+          "path": "nanochat/gpt.py",
+          "start": 47,
+          "end": 49
+        },
+        {
+          "path": "nanochat/gpt.py",
+          "start": 175,
+          "end": 177
+        },
+        {
+          "path": "nanochat/gpt.py",
+          "start": 85,
+          "end": 90
+        },
+        {
+          "path": "nanochat/gpt.py",
+          "start": 405,
+          "end": 406
+        }
+      ],
+      "snippets": [
+        {
+          "path": "nanochat/gpt.py",
+          "start": 47,
+          "end": 49,
+          "line_count": 3,
+          "code": "  47 | def has_ve(layer_idx, n_layer):\n  48 |     \"\"\"Returns True if GPT layer should have Value Embedding (alternating, last layer always included).\"\"\"\n  49 |     return layer_idx % 2 == (n_layer - 1) % 2",
+          "label": "Layer Selector For VE"
+        },
+        {
+          "path": "nanochat/gpt.py",
+          "start": 175,
+          "end": 177,
+          "line_count": 3,
+          "code": " 175 |         head_dim = config.n_embd // config.n_head\n 176 |         kv_dim = config.n_kv_head * head_dim\n 177 |         self.value_embeds = nn.ModuleDict({str(i): nn.Embedding(padded_vocab_size, kv_dim) for i in range(config.n_layer) if has_ve(i, config.n_layer)})",
+          "label": "Value Embedding ModuleDict"
+        },
+        {
+          "path": "nanochat/gpt.py",
+          "start": 85,
+          "end": 90,
+          "line_count": 6,
+          "code": "  85 |         # Value residual (ResFormer): mix in value embedding with input-dependent gate per head\n  86 |         if ve is not None:\n  87 |             ve = ve.view(B, T, self.n_kv_head, self.head_dim)\n  88 |             gate = 2 * torch.sigmoid(self.ve_gate(x[..., :self.ve_gate_channels]))  # (B, T, n_kv_head), range (0, 2)\n  89 |             v = v + gate.unsqueeze(-1) * ve\n  90 | ",
+          "label": "VE Gating Logic"
+        },
+        {
+          "path": "nanochat/gpt.py",
+          "start": 405,
+          "end": 406,
+          "line_count": 2,
+          "code": " 405 |             ve = self.value_embeds[str(i)](idx) if str(i) in self.value_embeds else None\n 406 |             x = block(x, ve, cos_sin, self.window_sizes[i], kv_cache)",
+          "label": "VE Hook In Forward Loop"
+        }
+      ]
+    },
+    {
+      "id": "mlp",
+      "title": "MLP Stack",
+      "commentary": [
+        "The MLP is a two-layer bias-free feedforward module with expansion ratio 4x.",
+        "Activation is ReLU-squared (`relu(x)^2`) instead of GELU."
+      ],
+      "references": [
+        {
+          "path": "nanochat/gpt.py",
+          "start": 121,
+          "end": 131
+        }
+      ],
+      "snippets": [
+        {
+          "path": "nanochat/gpt.py",
+          "start": 121,
+          "end": 131,
+          "line_count": 11,
+          "code": " 121 | class MLP(nn.Module):\n 122 |     def __init__(self, config):\n 123 |         super().__init__()\n 124 |         self.c_fc = nn.Linear(config.n_embd, 4 * config.n_embd, bias=False)\n 125 |         self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd, bias=False)\n 126 | \n 127 |     def forward(self, x):\n 128 |         x = self.c_fc(x)\n 129 |         x = F.relu(x).square()\n 130 |         x = self.c_proj(x)\n 131 |         return x",
+          "label": "MLP Module"
+        }
+      ]
+    },
+    {
+      "id": "output-head-and-loss",
+      "title": "Output Head And Training Loss",
+      "commentary": [
+        "After all blocks, the stream is RMS-normalized and projected through an untied LM head.",
+        "Logits are cropped back to vocab size (after optional padded vocab allocation) and softcapped with `15 * tanh(x/15)`.",
+        "Training uses next-token cross-entropy over shifted targets from the dataloader."
+      ],
+      "references": [
+        {
+          "path": "nanochat/gpt.py",
+          "start": 407,
+          "end": 419
+        },
+        {
+          "path": "nanochat/gpt.py",
+          "start": 167,
+          "end": 167
+        }
+      ],
+      "snippets": [
+        {
+          "path": "nanochat/gpt.py",
+          "start": 407,
+          "end": 419,
+          "line_count": 13,
+          "code": " 407 |         x = norm(x)\n 408 | \n 409 |         # Forward the lm_head (compute logits)\n 410 |         softcap = 15 # smoothly cap the logits to the range [-softcap, softcap]\n 411 |         logits = self.lm_head(x) # (B, T, padded_vocab_size) <- very big tensor, large amount of memory\n 412 |         logits = logits[..., :self.config.vocab_size] # slice to remove padding\n 413 |         logits = logits.float() # switch to fp32 for logit softcap and loss computation\n 414 |         logits = softcap * torch.tanh(logits / softcap) # squash the logits\n 415 | \n 416 |         if targets is not None:\n 417 |             # training: given the targets, compute and return the loss\n 418 |             # TODO experiment with chunked cross-entropy?\n 419 |             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1, reduction=loss_reduction)",
+          "label": "Tail Of Forward (Norm, Head, Softcap, Loss)"
+        }
+      ]
+    },
+    {
+      "id": "initialization",
+      "title": "Parameter Initialization",
+      "commentary": [
+        "`model.init_weights()` is the initialization entry used in default training.",
+        "Embedding and unembedding are initialized separately from transformer matrices.",
+        "Attention and MLP output projections are zero-initialized, and residual scalar parameters are explicitly initialized."
+      ],
+      "references": [
+        {
+          "path": "scripts/base_train.py",
+          "start": 146,
+          "end": 147
+        },
+        {
+          "path": "nanochat/gpt.py",
+          "start": 204,
+          "end": 221
+        },
+        {
+          "path": "nanochat/gpt.py",
+          "start": 227,
+          "end": 230
+        }
+      ],
+      "snippets": [
+        {
+          "path": "scripts/base_train.py",
+          "start": 146,
+          "end": 147,
+          "line_count": 2,
+          "code": " 146 | model.to_empty(device=device) # 2) All tensors get storage on target device but with uninitialized (garbage) data\n 147 | model.init_weights() # 3) All tensors get initialized",
+          "label": "Init Entry In Training"
+        },
+        {
+          "path": "nanochat/gpt.py",
+          "start": 204,
+          "end": 221,
+          "line_count": 18,
+          "code": " 204 |         # Embedding and unembedding\n 205 |         torch.nn.init.normal_(self.transformer.wte.weight, mean=0.0, std=1.0)\n 206 |         torch.nn.init.normal_(self.lm_head.weight, mean=0.0, std=0.001)\n 207 | \n 208 |         # Transformer blocks: uniform init with bound = sqrt(3) * std (same standard deviation as normal)\n 209 |         n_embd = self.config.n_embd\n 210 |         s = 3**0.5 * n_embd**-0.5 # sqrt(3) multiplier makes sure Uniform achieves the same std as Normal\n 211 |         for block in self.transformer.h:\n 212 |             torch.nn.init.uniform_(block.attn.c_q.weight, -s, s) # weights use Uniform to avoid outliers\n 213 |             torch.nn.init.uniform_(block.attn.c_k.weight, -s, s)\n 214 |             torch.nn.init.uniform_(block.attn.c_v.weight, -s, s)\n 215 |             torch.nn.init.zeros_(block.attn.c_proj.weight) # projections are zero\n 216 |             torch.nn.init.uniform_(block.mlp.c_fc.weight, -s, s)\n 217 |             torch.nn.init.zeros_(block.mlp.c_proj.weight)\n 218 | \n 219 |         # Per-layer scalars\n 220 |         self.resid_lambdas.fill_(1.0)   # 1.0 => typical residual connections at init\n 221 |         self.x0_lambdas.fill_(0.1)      # 0.1 => small initial weight for skip connection to input embedding",
+          "label": "Main Init Weights Block"
+        },
+        {
+          "path": "nanochat/gpt.py",
+          "start": 227,
+          "end": 230,
+          "line_count": 4,
+          "code": " 227 |         # Gate weights init to zero so gates start at sigmoid(0) = 0.5, scaled by 2 -> 1.0 (neutral)\n 228 |         for block in self.transformer.h:\n 229 |             if block.attn.ve_gate is not None:\n 230 |                 torch.nn.init.zeros_(block.attn.ve_gate.weight)",
+          "label": "Gate Init"
+        }
+      ]
+    },
+    {
+      "id": "attention-runtime-backend",
+      "title": "Attention Runtime Backend (FA3 Or SDPA)",
+      "commentary": [
+        "Runtime attention backend selection is centralized in `nanochat/flash_attention.py`.",
+        "If Flash Attention 3 is available on Hopper (`sm90`), it is used. Otherwise, it falls back to PyTorch SDPA.",
+        "This affects runtime kernels, not checkpoint parameter structure."
+      ],
+      "references": [
+        {
+          "path": "nanochat/flash_attention.py",
+          "start": 23,
+          "end": 42
+        },
+        {
+          "path": "nanochat/flash_attention.py",
+          "start": 99,
+          "end": 120
+        },
+        {
+          "path": "nanochat/flash_attention.py",
+          "start": 123,
+          "end": 169
+        }
+      ],
+      "snippets": [
+        {
+          "path": "nanochat/flash_attention.py",
+          "start": 23,
+          "end": 42,
+          "line_count": 20,
+          "code": "  23 | def _load_flash_attention_3():\n  24 |     \"\"\"Try to load Flash Attention 3 (requires Hopper GPU, sm90).\"\"\"\n  25 |     if not torch.cuda.is_available():\n  26 |         return None\n  27 |     try:\n  28 |         major, _ = torch.cuda.get_device_capability()\n  29 |         # FA3 kernels are compiled for Hopper (sm90) only\n  30 |         # Ada (sm89), Blackwell (sm100) need SDPA fallback until FA3 is recompiled\n  31 |         if major != 9:\n  32 |             return None\n  33 |         import os\n  34 |         os.environ[\"HF_HUB_DISABLE_PROGRESS_BARS\"] = \"1\"\n  35 |         from kernels import get_kernel\n  36 |         return get_kernel('varunneal/flash-attention-3').flash_attn_interface\n  37 |     except Exception:\n  38 |         return None\n  39 | \n  40 | \n  41 | _fa3 = _load_flash_attention_3()\n  42 | HAS_FA3 = _fa3 is not None",
+          "label": "FA3 Detection"
+        },
+        {
+          "path": "nanochat/flash_attention.py",
+          "start": 99,
+          "end": 120,
+          "line_count": 22,
+          "code": "  99 | def flash_attn_func(q, k, v, causal=False, window_size=(-1, -1)):\n 100 |     \"\"\"\n 101 |     Flash Attention for training (no KV cache).\n 102 | \n 103 |     Args:\n 104 |         q, k, v: Tensors of shape (B, T, H, D)\n 105 |         causal: Whether to use causal masking\n 106 |         window_size: (left, right) sliding window. -1 means unlimited.\n 107 | \n 108 |     Returns:\n 109 |         Output tensor of shape (B, T, H, D)\n 110 |     \"\"\"\n 111 |     if _use_fa3():\n 112 |         return _fa3.flash_attn_func(q, k, v, causal=causal, window_size=window_size)\n 113 | \n 114 |     # SDPA fallback: transpose (B, T, H, D) -> (B, H, T, D)\n 115 |     q = q.transpose(1, 2)\n 116 |     k = k.transpose(1, 2)\n 117 |     v = v.transpose(1, 2)\n 118 |     enable_gqa = q.size(1) != k.size(1)\n 119 |     y = _sdpa_attention(q, k, v, window_size, enable_gqa)\n 120 |     return y.transpose(1, 2)  # back to (B, T, H, D)",
+          "label": "Training Attention Wrapper"
+        },
+        {
+          "path": "nanochat/flash_attention.py",
+          "start": 123,
+          "end": 169,
+          "line_count": 47,
+          "code": " 123 | def flash_attn_with_kvcache(q, k_cache, v_cache, k=None, v=None, cache_seqlens=None,\n 124 |                             causal=False, window_size=(-1, -1)):\n 125 |     \"\"\"\n 126 |     Flash Attention with KV cache for inference.\n 127 | \n 128 |     FA3 updates k_cache/v_cache in-place. Our SDPA fallback does the same.\n 129 | \n 130 |     Args:\n 131 |         q: Queries, shape (B, T_new, H, D)\n 132 |         k_cache, v_cache: Pre-allocated cache tensors, shape (B, T_max, H_kv, D)\n 133 |         k, v: New keys/values to insert, shape (B, T_new, H_kv, D)\n 134 |         cache_seqlens: Current position in cache, shape (B,) int32\n 135 |         causal: Whether to use causal masking\n 136 |         window_size: (left, right) sliding window. -1 means unlimited.\n 137 | \n 138 |     Returns:\n 139 |         Output tensor of shape (B, T_new, H, D)\n 140 |     \"\"\"\n 141 |     if _use_fa3():\n 142 |         return _fa3.flash_attn_with_kvcache(\n 143 |             q, k_cache, v_cache, k=k, v=v, cache_seqlens=cache_seqlens,\n 144 |             causal=causal, window_size=window_size\n 145 |         )\n 146 | \n 147 |     # SDPA fallback: manually manage KV cache\n 148 |     B, T_new, H, D = q.shape\n 149 |     pos = cache_seqlens[0].item()  # assume uniform position across batch\n 150 | \n 151 |     # Insert new k, v into cache (in-place, matching FA3 behavior)\n 152 |     if k is not None and v is not None:\n 153 |         k_cache[:, pos:pos+T_new, :, :] = k\n 154 |         v_cache[:, pos:pos+T_new, :, :] = v\n 155 | \n 156 |     # Get full cache up to current position + new tokens\n 157 |     end_pos = pos + T_new\n 158 |     k_full = k_cache[:, :end_pos, :, :]\n 159 |     v_full = v_cache[:, :end_pos, :, :]\n 160 | \n 161 |     # Transpose to SDPA layout: (B, T, H, D) -> (B, H, T, D)\n 162 |     q_sdpa = q.transpose(1, 2)\n 163 |     k_sdpa = k_full.transpose(1, 2)\n 164 |     v_sdpa = v_full.transpose(1, 2)\n 165 | \n 166 |     enable_gqa = q_sdpa.size(1) != k_sdpa.size(1)\n 167 |     y_sdpa = _sdpa_attention(q_sdpa, k_sdpa, v_sdpa, window_size, enable_gqa)\n 168 | \n 169 |     return y_sdpa.transpose(1, 2)  # back to (B, T, H, D)",
+          "label": "KV Cache Attention Wrapper"
+        }
+      ]
+    },
+    {
+      "id": "dataloader-and-target-shift",
+      "title": "Default Dataloader And Target Shift",
+      "commentary": [
+        "Default base training uses the BOS-aligned best-fit dataloader variant.",
+        "Rows are packed as `T+1`, then shifted into `inputs=row[:-1]` and `targets=row[1:]` for next-token prediction."
+      ],
+      "references": [
+        {
+          "path": "scripts/base_train.py",
+          "start": 335,
+          "end": 338
+        },
+        {
+          "path": "nanochat/dataloader.py",
+          "start": 97,
+          "end": 100
+        },
+        {
+          "path": "nanochat/dataloader.py",
+          "start": 153,
+          "end": 160
+        }
+      ],
+      "snippets": [
+        {
+          "path": "scripts/base_train.py",
+          "start": 335,
+          "end": 338,
+          "line_count": 4,
+          "code": " 335 | dataloader_resume_state_dict = None if not resuming else meta_data[\"dataloader_state_dict\"]\n 336 | train_loader = tokenizing_distributed_data_loader_with_state_bos_bestfit(tokenizer, args.device_batch_size, args.max_seq_len, split=\"train\", device=device, resume_state_dict=dataloader_resume_state_dict)\n 337 | build_val_loader = lambda: tokenizing_distributed_data_loader_bos_bestfit(tokenizer, args.device_batch_size, args.max_seq_len, split=\"val\", device=device)\n 338 | x, y, dataloader_state_dict = next(train_loader) # kick off load of the very first batch of data",
+          "label": "Train Loader Selection"
+        },
+        {
+          "path": "nanochat/dataloader.py",
+          "start": 97,
+          "end": 100,
+          "line_count": 4,
+          "code": "  97 |     row_capacity = T + 1\n  98 |     batches = _document_batches(split, resume_state_dict, tokenizer_batch_size)\n  99 |     bos_token = tokenizer.get_bos_token_id()\n 100 |     doc_buffer = []",
+          "label": "Row Capacity And BOS Token"
+        },
+        {
+          "path": "nanochat/dataloader.py",
+          "start": 153,
+          "end": 160,
+          "line_count": 8,
+          "code": " 153 |         cpu_inputs.copy_(row_buffer[:, :-1])\n 154 |         cpu_targets.copy_(row_buffer[:, 1:])\n 155 | \n 156 |         state_dict = {\"pq_idx\": pq_idx, \"rg_idx\": rg_idx, \"epoch\": epoch}\n 157 | \n 158 |         # Single HtoD copy into persistent GPU buffer and yield\n 159 |         gpu_buffer.copy_(cpu_buffer, non_blocking=use_cuda)\n 160 |         yield inputs, targets, state_dict",
+          "label": "Input/Target Shift"
+        }
+      ]
+    },
+    {
+      "id": "checkpoint-contents",
+      "title": "What Gets Saved In A Default Checkpoint",
+      "commentary": [
+        "Default checkpoint writing happens inside the training loop with `save_checkpoint(...)`.",
+        "The model state dict, optimizer state, and metadata are saved. Metadata includes `model_config` and `user_config`.",
+        "The `model_config` payload is the architecture source of truth used later when loading checkpoints."
+      ],
+      "references": [
+        {
+          "path": "scripts/base_train.py",
+          "start": 444,
+          "end": 466
+        }
+      ],
+      "snippets": [
+        {
+          "path": "scripts/base_train.py",
+          "start": 444,
+          "end": 466,
+          "line_count": 23,
+          "code": " 444 |     # save checkpoint: at the end of the run, or every save_every steps, except at the first step or the resume step\n 445 |     if last_step or (step > 0 and step != args.resume_from_step and args.save_every > 0 and step % args.save_every == 0):\n 446 |         save_checkpoint(\n 447 |             checkpoint_dir,\n 448 |             step,\n 449 |             orig_model.state_dict(), # model parameters\n 450 |             optimizer.state_dict(), # optimizer state\n 451 |             { # metadata saved as json\n 452 |                 \"step\": step,\n 453 |                 \"val_bpb\": val_bpb, # loss at last step\n 454 |                 \"model_config\": model_config_kwargs,\n 455 |                 \"user_config\": user_config, # inputs to the training script\n 456 |                 \"device_batch_size\": args.device_batch_size,\n 457 |                 \"max_seq_len\": args.max_seq_len,\n 458 |                 \"dataloader_state_dict\": dataloader_state_dict,\n 459 |                 \"loop_state\": { # all loop state (other than step) so that we can resume training\n 460 |                     \"min_val_bpb\": min_val_bpb,\n 461 |                     \"smooth_train_loss\": smooth_train_loss,\n 462 |                     \"total_training_time\": total_training_time,\n 463 |                 },\n 464 |             },\n 465 |             rank=ddp_rank,\n 466 |         )",
+          "label": "Checkpoint Save Call"
+        }
+      ]
+    },
+    {
+      "id": "default-parameter-count",
+      "title": "Default Parameter Count (Depth 20 Path)",
+      "commentary": [
+        "Using default `depth=20`, `aspect-ratio=64`, `head-dim=128`, and tokenizer vocab `32768`, total parameters are `896,535,720`.",
+        "Breakdown: `wte=41,943,040`, `value_embeds=419,430,400`, `lm_head=41,943,040`, `transformer_matrices=393,219,200`, `scalars=40`.",
+        "Counting groups are implemented in `num_scaling_params()`."
+      ],
+      "references": [
+        {
+          "path": "nanochat/gpt.py",
+          "start": 319,
+          "end": 346
+        }
+      ],
+      "snippets": [
+        {
+          "path": "nanochat/gpt.py",
+          "start": 319,
+          "end": 346,
+          "line_count": 28,
+          "code": " 319 |     def num_scaling_params(self):\n 320 |         \"\"\"\n 321 |         Return detailed parameter counts for scaling law analysis.\n 322 |         Different papers use different conventions:\n 323 |         - Kaplan et al. excluded embedding parameters\n 324 |         - Chinchilla included all parameters\n 325 |         Ref: https://arxiv.org/abs/2203.15556 (Chinchilla paper)\n 326 |         Ref: https://arxiv.org/abs/2001.08361 (Kaplan et al. original scaling laws paper)\n 327 | \n 328 |         Returns a dict with counts for each parameter group, so downstream analysis\n 329 |         can experiment with which combination gives the cleanest scaling laws.\n 330 |         \"\"\"\n 331 |         # Count each group separately (mirrors the grouping in setup_optimizers)\n 332 |         wte = sum(p.numel() for p in self.transformer.wte.parameters())\n 333 |         value_embeds = sum(p.numel() for p in self.value_embeds.parameters())\n 334 |         lm_head = sum(p.numel() for p in self.lm_head.parameters())\n 335 |         transformer_matrices = sum(p.numel() for p in self.transformer.h.parameters())\n 336 |         scalars = self.resid_lambdas.numel() + self.x0_lambdas.numel()\n 337 |         total = wte + value_embeds + lm_head + transformer_matrices + scalars\n 338 |         assert total == sum(p.numel() for p in self.parameters()), \"Parameter count mismatch\"\n 339 |         return {\n 340 |             'wte': wte,\n 341 |             'value_embeds': value_embeds,\n 342 |             'lm_head': lm_head,\n 343 |             'transformer_matrices': transformer_matrices,\n 344 |             'scalars': scalars,\n 345 |             'total': total,\n 346 |         }",
+          "label": "Parameter Group Counting"
+        }
+      ]
+    },
+    {
+      "id": "explicitly-not-default",
+      "title": "Explicitly Not In The Default Path",
+      "commentary": [
+        "The HuggingFace tokenizer wrapper exists but is not used by default base training path.",
+        "FP8 conversion exists behind `--fp8` and is disabled by default.",
+        "Non-equal GQA head settings are possible in config space, but default path sets `n_kv_head == n_head`."
+      ],
+      "references": [
+        {
+          "path": "nanochat/tokenizer.py",
+          "start": 39,
+          "end": 59
+        },
+        {
+          "path": "scripts/base_train.py",
+          "start": 46,
+          "end": 47
+        },
+        {
+          "path": "scripts/base_train.py",
+          "start": 164,
+          "end": 184
+        },
+        {
+          "path": "scripts/base_train.py",
+          "start": 134,
+          "end": 134
+        }
+      ],
+      "snippets": [
+        {
+          "path": "nanochat/tokenizer.py",
+          "start": 39,
+          "end": 59,
+          "line_count": 21,
+          "code": "  39 | class HuggingFaceTokenizer:\n  40 |     \"\"\"Light wrapper around HuggingFace Tokenizer for some utilities\"\"\"\n  41 | \n  42 |     def __init__(self, tokenizer):\n  43 |         self.tokenizer = tokenizer\n  44 | \n  45 |     @classmethod\n  46 |     def from_pretrained(cls, hf_path):\n  47 |         # init from a HuggingFace pretrained tokenizer (e.g. \"gpt2\")\n  48 |         tokenizer = HFTokenizer.from_pretrained(hf_path)\n  49 |         return cls(tokenizer)\n  50 | \n  51 |     @classmethod\n  52 |     def from_directory(cls, tokenizer_dir):\n  53 |         # init from a local directory on disk (e.g. \"out/tokenizer\")\n  54 |         tokenizer_path = os.path.join(tokenizer_dir, \"tokenizer.json\")\n  55 |         tokenizer = HFTokenizer.from_file(tokenizer_path)\n  56 |         return cls(tokenizer)\n  57 | \n  58 |     @classmethod\n  59 |     def train_from_iterator(cls, text_iterator, vocab_size):",
+          "label": "HF Tokenizer Wrapper"
+        },
+        {
+          "path": "scripts/base_train.py",
+          "start": 46,
+          "end": 47,
+          "line_count": 2,
+          "code": "  46 | parser.add_argument(\"--fp8\", action=\"store_true\", help=\"enable FP8 training (requires H100+ GPU and torchao)\")\n  47 | parser.add_argument(\"--fp8-recipe\", type=str, default=\"tensorwise\", choices=[\"rowwise\", \"tensorwise\"], help=\"FP8 scaling recipe: tensorwise (faster, recommended) or rowwise (more accurate but slower)\")",
+          "label": "FP8 Flag And Conversion Path"
+        },
+        {
+          "path": "scripts/base_train.py",
+          "start": 164,
+          "end": 184,
+          "line_count": 21,
+          "code": " 164 | if args.fp8:\n 165 |     if device_type != \"cuda\":\n 166 |         print0(\"Warning: FP8 training requires CUDA, ignoring --fp8 flag\")\n 167 |     else:\n 168 |         from torchao.float8 import Float8LinearConfig, convert_to_float8_training\n 169 |         import torch.nn as nn\n 170 | \n 171 |         # Filter: only convert layers with dimensions divisible by 16 (FP8 hardware requirement)\n 172 |         def fp8_module_filter(mod: nn.Module, fqn: str) -> bool:\n 173 |             if not isinstance(mod, nn.Linear):\n 174 |                 return False\n 175 |             # FP8 requires both in_features and out_features divisible by 16\n 176 |             if mod.in_features % 16 != 0 or mod.out_features % 16 != 0:\n 177 |                 return False\n 178 |             return True\n 179 | \n 180 |         fp8_config = Float8LinearConfig.from_recipe_name(args.fp8_recipe)\n 181 |         convert_to_float8_training(model, config=fp8_config, module_filter_fn=fp8_module_filter)\n 182 |         num_fp8_layers = sum(1 for m in model.modules() if 'Float8' in type(m).__name__)\n 183 |         num_skipped = sum(1 for m in model.modules() if isinstance(m, nn.Linear)) - num_fp8_layers\n 184 |         print0(f\"\u2713 FP8 training enabled ({args.fp8_recipe} scaling) - converted {num_fp8_layers} layers, skipped {num_skipped} (dims not divisible by 16)\")",
+          "label": "FP8 Conversion Block"
+        }
+      ]
+    }
+  ]
+}
