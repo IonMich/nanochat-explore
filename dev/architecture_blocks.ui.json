@@ -1,7 +1,7 @@
 {
   "title": "Default Nanochat Architecture Explorer",
   "subtitle": "Single source of truth for architecture comments used by both Markdown docs and UI.",
-  "generated_at_utc": "2026-02-06 19:16:25Z",
+  "generated_at_utc": "2026-02-06 19:46:04Z",
   "default_path": [
     "python -m scripts.tok_train",
     "python -m scripts.base_train"

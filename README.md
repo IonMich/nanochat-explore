@@ -5,10 +5,20 @@ This fork is intended to explore the nanochat codebase through a UI: side-by-sid
 Quick start:
 
 ```bash
-python3 scripts/generate_architecture_docs.py
-python3 -m http.server 8000
+uv run --no-project -m scripts.generate_architecture_docs
+uv run --no-project -m http.server 8000
 # open http://localhost:8000/dev/architecture_explorer.html
 ```
+
+Explorer UI screenshot:
+
+![nanochat-explore UI](dev/nanochat-explorer-ui.png)
+
+Why `--no-project`:
+
+- `uv run` in a project auto-locks and syncs project dependencies by default.
+- This repo's project dependencies are the full nanochat training stack.
+- The explorer commands above only need stdlib, so `--no-project` keeps them lightweight.
 
 Single source of truth for comments:
 
