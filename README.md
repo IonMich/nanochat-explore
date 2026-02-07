@@ -1,5 +1,7 @@
 # nanochat-explore
 
+<img src="nanochat/logo.svg" alt="nanochat-explore icon" width="72" />
+
 This fork is intended to explore the nanochat codebase through a UI: side-by-side code snippets (left) and architecture commentary (right).
 
 Quick start:
