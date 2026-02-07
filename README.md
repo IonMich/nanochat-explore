@@ -16,18 +16,6 @@ Explorer UI screenshot:
 
 ![nanochat-explore UI](dev/nanochat-explorer-ui.png)
 
-Why `--no-project`:
-
-- `uv run` in a project auto-locks and syncs project dependencies by default.
-- This repo's project dependencies are the full nanochat training stack.
-- The explorer commands above only need stdlib, so `--no-project` keeps them lightweight.
-
-Single source of truth for comments:
-
-- `dev/architecture_blocks.source.json`
-- Generated Markdown: `dev/DEFAULT_MODEL_BUILDING_BLOCKS.md`
-- Generated UI data: `dev/architecture_blocks.ui.json`
-
 Upstream project context:
 
 ![nanochat logo](dev/nanochat.png)
